@@ -12,16 +12,23 @@ pub noinline fn printStack() void {
     });
 }
 
-pub fn yeet(i: usize) void {
+pub fn test_fn1(i: usize) void {
     for (0..i) |value| {
-        std.debug.print("Hi1: {}\n", .{value});
+        std.debug.print("Hi 1: {}\n", .{value});
+        co.yield();
+    }
+}
+
+pub fn test_fn2(i: usize) void {
+    for (0..i) |value| {
+        std.debug.print("Hi 2: {}\n", .{value});
         co.yield();
     }
 }
 
 pub fn main() !void {
     co.init();
-    co.create(yeet, @ptrFromInt(5));
-    co.create(yeet, @ptrFromInt(10));
+    co.create(test_fn1, @ptrFromInt(5));
+    co.create(test_fn2, @ptrFromInt(10));
     while (co.CONTEXTS.items.len > 1) co.yield();
 }
