@@ -16,12 +16,14 @@ const Context = struct {
     base: []u8,
 };
 
-pub var CONTEXTS = std.ArrayList(Context).init(std.heap.page_allocator);
-pub var CONTEXT_CURRENT: usize = 0;
+const allocator: std.mem.Allocator = std.heap.page_allocator;
+var contexts = std.ArrayList(Context).init(allocator);
+var current: usize = 0;
+
 pub const PAGE_SIZE = 4 * 1024;
 
 pub fn init() callconv(.C) void {
-    CONTEXTS.append(.{ .rsp = undefined, .base = undefined }) catch @panic("Buy more RAM");
+    contexts.append(.{ .rsp = undefined, .base = undefined }) catch @panic("Buy more RAM");
 }
 
 pub fn create(f: *const anyopaque, ctx: *const anyopaque) void {
@@ -40,20 +42,20 @@ pub fn create(f: *const anyopaque, ctx: *const anyopaque) void {
         rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
         rsp.* = 0;
     }
-    CONTEXTS.append(.{ .rsp = rsp, .base = base }) catch @panic("OOM");
+    contexts.append(.{ .rsp = rsp, .base = base }) catch @panic("OOM");
 }
 
 pub fn finish() callconv(.C) void {
     // TODO: Tf why is the stack not aligned
     asm volatile ("sub $0x8, %rsp");
-    if (CONTEXT_CURRENT == 0) {
-        CONTEXTS.clearRetainingCapacity();
+    if (current == 0) {
+        contexts.clearRetainingCapacity();
         return;
     }
 
-    _ = CONTEXTS.swapRemove(CONTEXT_CURRENT);
-    CONTEXT_CURRENT %= CONTEXTS.items.len;
-    co_restore(CONTEXTS.items[CONTEXT_CURRENT].rsp);
+    _ = contexts.swapRemove(current);
+    current %= contexts.items.len;
+    co_restore(contexts.items[current].rsp);
 }
 
 noinline fn __co_yield() callconv(.Naked) void {
@@ -86,7 +88,22 @@ noinline fn __co_restore(rsp: *anyopaque) callconv(.Naked) void {
 }
 
 fn __co_switch(rsp: *anyopaque) callconv(.C) void {
-    CONTEXTS.items[CONTEXT_CURRENT].rsp = rsp;
-    CONTEXT_CURRENT = (CONTEXT_CURRENT + 1) % CONTEXTS.items.len;
-    co_restore(CONTEXTS.items[CONTEXT_CURRENT].rsp);
+    contexts.items[current].rsp = rsp;
+    current = (current + 1) % contexts.items.len;
+    co_restore(contexts.items[current].rsp);
+}
+
+pub fn num_routines() usize {
+    return contexts.items.len;
+}
+
+pub noinline fn __printStack() void {
+    const diff = @intFromPtr(contexts.items[current].rsp) - @intFromPtr(contexts.items[current].base.ptr);
+    const stack: *[PAGE_SIZE / 8]usize = @ptrCast(@alignCast(contexts.items[current].base.ptr));
+
+    std.debug.print("{}: {any}\n {x}\n", .{
+        current,
+        contexts.items[current].rsp,
+        stack[@divFloor(diff, 8) + 7 ..],
+    });
 }
