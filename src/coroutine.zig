@@ -12,37 +12,37 @@ extern fn co_return() callconv(.C) void;
 extern fn co_restore(rsp: *anyopaque) callconv(.C) void;
 
 const Context = struct {
-    rsp: *anyopaque,
+    rsp: *usize,
     base: []u8,
+    id: usize,
 };
 
 const allocator: std.mem.Allocator = std.heap.page_allocator;
 var contexts = std.ArrayList(Context).init(allocator);
 var current: usize = 0;
 
+var next_id: usize = 0;
+
 pub const PAGE_SIZE = 4 * 1024;
 
 pub fn init() callconv(.C) void {
-    contexts.append(.{ .rsp = undefined, .base = undefined }) catch @panic("Buy more RAM");
+    _ = createContext();
 }
 
-pub fn create(f: *const anyopaque, ctx: *const anyopaque) void {
-    const base: []u8 = std.heap.page_allocator.alloc(u8, PAGE_SIZE) catch @panic("OOM");
-    @memset(base, 0);
-    var rsp: *usize = @ptrFromInt(@intFromPtr(base.ptr) + base.len);
+pub fn create(f: *const anyopaque, fn_ctx: *const anyopaque) void {
+    var ctx = createContext();
     // TODO: In zig 0.14 we can clean up the pointer arithmetic
-    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-    rsp.* = @intFromPtr(&finish);
-    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-    rsp.* = @intFromPtr(f);
-    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-    rsp.* = @intFromPtr(ctx); // push rdi
+    ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
+    ctx.rsp.* = @intFromPtr(&finish);
+    ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
+    ctx.rsp.* = @intFromPtr(f);
+    ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
+    ctx.rsp.* = @intFromPtr(fn_ctx); // push rdi
     inline for (0..6) |_| {
         // push rbx, rbp, r12-r15
-        rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-        rsp.* = 0;
+        ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
+        ctx.rsp.* = 0;
     }
-    contexts.append(.{ .rsp = rsp, .base = base }) catch @panic("OOM");
 }
 
 pub fn finish() callconv(.C) void {
@@ -88,13 +88,17 @@ noinline fn __co_restore(rsp: *anyopaque) callconv(.Naked) void {
 }
 
 fn __co_switch(rsp: *anyopaque) callconv(.C) void {
-    contexts.items[current].rsp = rsp;
+    contexts.items[current].rsp = @alignCast(@ptrCast(rsp));
     current = (current + 1) % contexts.items.len;
     co_restore(contexts.items[current].rsp);
 }
 
-pub fn num_routines() usize {
+pub fn numRoutines() usize {
     return contexts.items.len;
+}
+
+pub fn currentId() usize {
+    return contexts.items[current].id;
 }
 
 pub noinline fn __printStack() void {
@@ -106,4 +110,17 @@ pub noinline fn __printStack() void {
         contexts.items[current].rsp,
         stack[@divFloor(diff, 8) + 7 ..],
     });
+}
+
+fn createContext() *Context {
+    var base: []u8 = undefined;
+    var rsp: *usize = undefined;
+    if (next_id != 0) {
+        base = std.heap.page_allocator.alloc(u8, PAGE_SIZE) catch @panic("OOM");
+        rsp = @ptrFromInt(@intFromPtr(base.ptr) + base.len);
+    }
+
+    contexts.append(.{ .base = base, .rsp = rsp, .id = next_id }) catch @panic("OOM");
+    next_id += 1;
+    return &contexts.items[contexts.items.len - 1];
 }
