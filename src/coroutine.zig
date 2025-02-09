@@ -19,8 +19,9 @@ const Context = struct {
 
 const allocator: std.mem.Allocator = std.heap.page_allocator;
 var contexts = std.ArrayList(Context).init(allocator);
-var current: usize = 0;
+var dead_contexts = std.ArrayList(Context).init(allocator);
 
+var current: usize = 0;
 var next_id: usize = 0;
 
 pub const PAGE_SIZE = 4 * 1024;
@@ -53,8 +54,10 @@ pub fn finish() callconv(.C) void {
         return;
     }
 
-    _ = contexts.swapRemove(current);
+    const dead = contexts.swapRemove(current);
     current %= contexts.items.len;
+    dead_contexts.append(dead) catch @panic("OOM");
+
     co_restore(contexts.items[current].rsp);
 }
 
@@ -116,7 +119,11 @@ fn createContext() *Context {
     var base: []u8 = undefined;
     var rsp: *usize = undefined;
     if (next_id != 0) {
-        base = std.heap.page_allocator.alloc(u8, PAGE_SIZE) catch @panic("OOM");
+        if (dead_contexts.items.len > 0) {
+            base = dead_contexts.pop().base;
+        } else {
+            base = std.heap.page_allocator.alloc(u8, PAGE_SIZE) catch @panic("OOM");
+        }
         rsp = @ptrFromInt(@intFromPtr(base.ptr) + base.len);
     }
 

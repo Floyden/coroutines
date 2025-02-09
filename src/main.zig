@@ -19,5 +19,7 @@ pub fn main() !void {
     co.init();
     co.create(test_fn1, @ptrFromInt(5));
     co.create(test_fn2, @ptrFromInt(10));
+    while (co.numRoutines() > 2) co.yield();
+    co.create(test_fn1, @ptrFromInt(5));
     while (co.numRoutines() > 1) co.yield();
 }
