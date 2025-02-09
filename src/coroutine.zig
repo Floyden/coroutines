@@ -1,10 +1,15 @@
 const std = @import("std");
 
+// Reexport functions to make it callable in a zig context
 comptime {
     @export(__co_yield, .{ .name = "yield", .linkage = .strong });
     @export(__co_restore, .{ .name = "co_restore", .linkage = .strong });
     @export(__co_switch, .{ .name = "co_switch", .linkage = .strong });
 }
+
+pub extern fn yield() callconv(.C) void;
+extern fn co_return() callconv(.C) void;
+extern fn co_restore(rsp: *anyopaque) callconv(.C) void;
 
 const Context = struct {
     rsp: *anyopaque,
@@ -17,6 +22,38 @@ pub const PAGE_SIZE = 4 * 1024;
 
 pub fn init() callconv(.C) void {
     CONTEXTS.append(.{ .rsp = undefined, .base = undefined }) catch @panic("Buy more RAM");
+}
+
+pub fn create(f: *const anyopaque, ctx: *const anyopaque) void {
+    const base: []u8 = std.heap.page_allocator.alloc(u8, PAGE_SIZE) catch @panic("OOM");
+    @memset(base, 0);
+    var rsp: *usize = @ptrFromInt(@intFromPtr(base.ptr) + base.len);
+    // TODO: In zig 0.14 we can clean up the pointer arithmetic
+    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
+    rsp.* = @intFromPtr(&finish);
+    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
+    rsp.* = @intFromPtr(f);
+    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
+    rsp.* = @intFromPtr(ctx); // push rdi
+    inline for (0..6) |_| {
+        // push rbx, rbp, r12-r15
+        rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
+        rsp.* = 0;
+    }
+    CONTEXTS.append(.{ .rsp = rsp, .base = base }) catch @panic("OOM");
+}
+
+pub fn finish() callconv(.C) void {
+    // TODO: Tf why is the stack not aligned
+    asm volatile ("sub $0x8, %rsp");
+    if (CONTEXT_CURRENT == 0) {
+        CONTEXTS.clearRetainingCapacity();
+        return;
+    }
+
+    _ = CONTEXTS.swapRemove(CONTEXT_CURRENT);
+    CONTEXT_CURRENT %= CONTEXTS.items.len;
+    co_restore(CONTEXTS.items[CONTEXT_CURRENT].rsp);
 }
 
 noinline fn __co_yield() callconv(.Naked) void {
@@ -53,38 +90,3 @@ fn __co_switch(rsp: *anyopaque) callconv(.C) void {
     CONTEXT_CURRENT = (CONTEXT_CURRENT + 1) % CONTEXTS.items.len;
     co_restore(CONTEXTS.items[CONTEXT_CURRENT].rsp);
 }
-
-pub fn finish() callconv(.C) void {
-    // TODO: Tf why is the stack not aligned
-    asm volatile ("sub $0x8, %rsp");
-    if (CONTEXT_CURRENT == 0) {
-        CONTEXTS.clearRetainingCapacity();
-        return;
-    }
-
-    _ = CONTEXTS.swapRemove(CONTEXT_CURRENT);
-    CONTEXT_CURRENT %= CONTEXTS.items.len;
-    co_restore(CONTEXTS.items[CONTEXT_CURRENT].rsp);
-}
-
-pub fn create(f: *const fn (usize) void, arg: *anyopaque) void {
-    const base: []u8 = std.heap.page_allocator.alloc(u8, PAGE_SIZE) catch @panic("OOM");
-    @memset(base, 0);
-    var rsp: *usize = @ptrFromInt(@intFromPtr(base.ptr) + base.len);
-    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-    rsp.* = @intFromPtr(&finish);
-    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-    rsp.* = @intFromPtr(f);
-    rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-    rsp.* = @intFromPtr(arg); // push rdi
-    inline for (0..6) |_| {
-        // push rbx, rbp, r12-r15
-        rsp = @ptrFromInt(@intFromPtr(rsp) - @sizeOf(usize));
-        rsp.* = 0;
-    }
-    CONTEXTS.append(.{ .rsp = rsp, .base = base }) catch @panic("OOM");
-}
-
-pub extern fn yield() callconv(.C) void;
-extern fn co_restore(rsp: *anyopaque) callconv(.C) void;
-extern fn co_return() callconv(.C) void;

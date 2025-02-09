@@ -8,12 +8,12 @@ pub noinline fn printStack() void {
     std.debug.print("{}: {any}\n {x}\n", .{
         co.CONTEXT_CURRENT,
         co.CONTEXTS.items[co.CONTEXT_CURRENT].rsp,
-        stack[@divFloor(diff, 8) + 0x13 + 7 ..],
+        stack[@divFloor(diff, 8) + 7 ..],
     });
 }
 
-pub fn test_fn1(i: usize) void {
-    for (0..i) |value| {
+pub fn test_fn1() void {
+    for (0..5) |value| {
         std.debug.print("Hi 1: {}\n", .{value});
         co.yield();
     }
