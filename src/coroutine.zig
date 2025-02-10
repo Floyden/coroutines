@@ -92,7 +92,8 @@ noinline fn __co_restore(rsp: *anyopaque) callconv(.Naked) void {
 
 fn __co_switch(rsp: *anyopaque) callconv(.C) void {
     contexts.items[current].rsp = @alignCast(@ptrCast(rsp));
-    current = (current + 1) % contexts.items.len;
+    current = (current + 1);
+    if (current == contexts.items.len) current = 0;
     co_restore(contexts.items[current].rsp);
 }
 
