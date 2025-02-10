@@ -30,12 +30,27 @@ pub fn init() callconv(.C) void {
     _ = createContext();
 }
 
-pub fn create(f: *const anyopaque, fn_ctx: *const anyopaque) callconv(.C) void {
+// TODO: Make it so that functions with multiple arguments also work
+pub fn create(f: *const anyopaque, params: anytype) void {
     var ctx = createContext();
+
+    inline for (params) |param| {
+        const PType = @TypeOf(param);
+        if (@sizeOf(PType) == 0) {
+            continue;
+        }
+        ctx.rsp -= @sizeOf(PType);
+
+        if (comptime @typeInfo(PType) == .pointer) {
+            ctx.rsp[0] = @intFromPtr(param);
+        } else {
+            @as([*]PType, ctx.rsp)[0] = param;
+        }
+    }
     ctx.rsp -= 9;
     ctx.rsp[8] = @intFromPtr(&finish);
     ctx.rsp[7] = @intFromPtr(f);
-    ctx.rsp[6] = @intFromPtr(fn_ctx); // push rdi
+    ctx.rsp[6] = @intFromPtr(&ctx.rsp[9]); // push rdi
     inline for (0..6) |i|
         // push rbx, rbp, r12-r15
         ctx.rsp[i] = 0;
