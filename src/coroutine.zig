@@ -12,7 +12,7 @@ extern fn co_return() callconv(.C) void;
 extern fn co_restore(rsp: *anyopaque) callconv(.C) void;
 
 const Context = struct {
-    rsp: *usize,
+    rsp: [*]usize,
     base: []u8,
     id: usize,
 };
@@ -32,18 +32,13 @@ pub fn init() callconv(.C) void {
 
 pub fn create(f: *const anyopaque, fn_ctx: *const anyopaque) callconv(.C) void {
     var ctx = createContext();
-    // TODO: In zig 0.14 we can clean up the pointer arithmetic
-    ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
-    ctx.rsp.* = @intFromPtr(&finish);
-    ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
-    ctx.rsp.* = @intFromPtr(f);
-    ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
-    ctx.rsp.* = @intFromPtr(fn_ctx); // push rdi
-    inline for (0..6) |_| {
+    ctx.rsp -= 9;
+    ctx.rsp[8] = @intFromPtr(&finish);
+    ctx.rsp[7] = @intFromPtr(f);
+    ctx.rsp[6] = @intFromPtr(fn_ctx); // push rdi
+    inline for (0..6) |i|
         // push rbx, rbp, r12-r15
-        ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
-        ctx.rsp.* = 0;
-    }
+        ctx.rsp[i] = 0;
 }
 
 pub fn finish() callconv(.C) void {
@@ -118,7 +113,7 @@ pub noinline fn __printStack() void {
 
 fn createContext() *Context {
     var base: []u8 = undefined;
-    var rsp: *usize = undefined;
+    var rsp: [*]usize = undefined;
     if (next_id != 0) {
         if (dead_contexts.items.len > 0) {
             base = dead_contexts.pop().base;
