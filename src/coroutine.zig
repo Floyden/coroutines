@@ -2,9 +2,9 @@ const std = @import("std");
 
 // Reexport functions to make it callable in a zig context
 comptime {
-    @export(__co_yield, .{ .name = "yield", .linkage = .strong });
-    @export(__co_restore, .{ .name = "co_restore", .linkage = .strong });
-    @export(__co_switch, .{ .name = "co_switch", .linkage = .strong });
+    @export(&__co_yield, .{ .name = "yield", .linkage = .strong });
+    @export(&__co_restore, .{ .name = "co_restore", .linkage = .strong });
+    @export(&__co_switch, .{ .name = "co_switch", .linkage = .strong });
 }
 
 pub extern fn yield() callconv(.C) void;
@@ -30,7 +30,7 @@ pub fn init() callconv(.C) void {
     _ = createContext();
 }
 
-pub fn create(f: *const anyopaque, fn_ctx: *const anyopaque) void {
+pub fn create(f: *const anyopaque, fn_ctx: *const anyopaque) callconv(.C) void {
     var ctx = createContext();
     // TODO: In zig 0.14 we can clean up the pointer arithmetic
     ctx.rsp = @ptrFromInt(@intFromPtr(ctx.rsp) - @sizeOf(usize));
@@ -100,7 +100,7 @@ pub fn numRoutines() usize {
     return contexts.items.len;
 }
 
-pub fn currentId() usize {
+pub fn currentId() callconv(.C) usize {
     return contexts.items[current].id;
 }
 

@@ -1,14 +1,14 @@
 const std = @import("std");
 const co = @import("coroutine.zig");
 
-pub fn test_fn1() void {
+pub fn test_fn1(_: *anyopaque) callconv(.C) void {
     for (0..5) |value| {
         std.debug.print("[{}]Hi: {}\n", .{ co.currentId(), value });
         co.yield();
     }
 }
 
-pub fn test_fn2(i: usize) void {
+pub fn test_fn2(i: usize) callconv(.C) void {
     for (0..i) |value| {
         std.debug.print("[{}]Hi: {}\n", .{ co.currentId(), value });
         co.yield();
