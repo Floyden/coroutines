@@ -2,10 +2,9 @@ const std = @import("std");
 const co = @import("coroutine.zig");
 
 pub fn test_fn1(_str: *anyopaque) callconv(.C) void {
-    // const val: *usize = @as(**usize, @alignCast(@ptrCast(_str))).*;
-    const val: [*:0]const u8 = @as(*[*:0]const u8, @alignCast(@ptrCast(_str))).*;
-    for (0..5) |_| {
-        std.debug.print("[{}]Hi: {s}\n", .{ co.currentId(), val });
+    const val: *struct { [*:0]const u8, [*:0]const u8 } = @alignCast(@ptrCast(_str));
+    for (0..1) |_| {
+        std.debug.print("[{}]Hi: {*} {*}\n", .{ co.currentId(), val[0], val[1] });
         co.yield();
     }
 }
@@ -42,7 +41,7 @@ fn bench() void {
 pub fn main() !void {
     co.init();
     // bench();
-    co.create(test_fn1, .{"Hello World"});
+    co.create(test_fn1, .{ "Hello", "World" });
     co.create(test_fn2, .{@as(usize, 10)});
     // while (co.numRoutines() > 2) co.yield();
     // co.create(test_fn1, @ptrFromInt(5));

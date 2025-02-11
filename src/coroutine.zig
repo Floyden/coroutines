@@ -38,8 +38,9 @@ pub fn create(f: *const anyopaque, params: anytype) void {
         const PType = @TypeOf(param);
         if (@sizeOf(PType) == 0) {
             continue;
+        } else {
+            ctx.rsp -= @sizeOf(PType) / @sizeOf(usize);
         }
-        ctx.rsp -= @sizeOf(PType);
 
         if (comptime @typeInfo(PType) == .pointer) {
             ctx.rsp[0] = @intFromPtr(param);
@@ -47,10 +48,14 @@ pub fn create(f: *const anyopaque, params: anytype) void {
             @as([*]PType, ctx.rsp)[0] = param;
         }
     }
+    var offset: usize = 9;
+    if (@intFromPtr(ctx.rsp) % 0x10 != 0) {
+        ctx.rsp -= 1;
+        offset += 1;
     ctx.rsp -= 9;
     ctx.rsp[8] = @intFromPtr(&finish);
     ctx.rsp[7] = @intFromPtr(f);
-    ctx.rsp[6] = @intFromPtr(&ctx.rsp[9]); // push rdi
+    ctx.rsp[6] = @intFromPtr(&ctx.rsp[offset]); // push rdi
     inline for (0..6) |i|
         // push rbx, rbp, r12-r15
         ctx.rsp[i] = 0;
@@ -122,7 +127,7 @@ pub noinline fn __printStack() void {
     std.debug.print("{}: {any}\n {x}\n", .{
         current,
         contexts.items[current].rsp,
-        stack[@divFloor(diff, 8) + 7 ..],
+        stack[@divFloor(diff, 8)..],
     });
 }
 
