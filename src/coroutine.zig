@@ -30,7 +30,8 @@ pub fn init() callconv(.C) void {
     _ = createContext();
 }
 
-// TODO: Make it so that functions with multiple arguments also work
+// TODO: Make sure that the alignment of the parameters is correct
+// TODO: Implement for all parameter types
 pub fn create(f: *const anyopaque, params: anytype) void {
     var ctx = createContext();
 
@@ -38,16 +39,19 @@ pub fn create(f: *const anyopaque, params: anytype) void {
     inline while (param_idx > 0) : (param_idx -= 1) {
         const param = params[param_idx - 1];
         const PType = @TypeOf(param);
-        if (@sizeOf(PType) == 0) {
-            continue;
-        } else {
-            ctx.rsp -= @sizeOf(PType) / @sizeOf(usize);
-        }
 
-        if (comptime @typeInfo(PType) == .pointer) {
-            ctx.rsp[0] = @intFromPtr(param);
-        } else {
-            @as([*]PType, ctx.rsp)[0] = param;
+        switch (comptime @typeInfo(PType)) {
+            .pointer => {
+                ctx.rsp -= 1;
+                ctx.rsp[0] = @intFromPtr(param);
+            },
+            .comptime_int, .int => {
+                ctx.rsp -= 1;
+                ctx.rsp[0] = param;
+            },
+            else => {
+                @compileLog("Not implemented: ", @typeName(PType));
+            },
         }
     }
 
