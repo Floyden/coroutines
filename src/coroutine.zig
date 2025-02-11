@@ -34,7 +34,9 @@ pub fn init() callconv(.C) void {
 pub fn create(f: *const anyopaque, params: anytype) void {
     var ctx = createContext();
 
-    inline for (params) |param| {
+    comptime var param_idx: usize = params.len;
+    inline while (param_idx > 0) : (param_idx -= 1) {
+        const param = params[param_idx - 1];
         const PType = @TypeOf(param);
         if (@sizeOf(PType) == 0) {
             continue;
@@ -48,10 +50,12 @@ pub fn create(f: *const anyopaque, params: anytype) void {
             @as([*]PType, ctx.rsp)[0] = param;
         }
     }
+
     var offset: usize = 9;
     if (@intFromPtr(ctx.rsp) % 0x10 != 0) {
         ctx.rsp -= 1;
         offset += 1;
+    }
     ctx.rsp -= 9;
     ctx.rsp[8] = @intFromPtr(&finish);
     ctx.rsp[7] = @intFromPtr(f);

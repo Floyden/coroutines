@@ -4,7 +4,7 @@ const co = @import("coroutine.zig");
 pub fn test_fn1(_str: *anyopaque) callconv(.C) void {
     const val: *struct { [*:0]const u8, [*:0]const u8 } = @alignCast(@ptrCast(_str));
     for (0..1) |_| {
-        std.debug.print("[{}]Hi: {*} {*}\n", .{ co.currentId(), val[0], val[1] });
+        std.debug.print("[{}]Hi: {s} {s}\n", .{ co.currentId(), val[0], val[1] });
         co.yield();
     }
 }
